@@ -16,9 +16,30 @@ cat >> (file na,e) <- append some data (if no file present creates a new file)
 Directory creation :      mkdir (dir name)
 
 File Deletion : rm --(file name)
-                rm -fa (file name)  <- removes file in foreful manner
+                rm -fa (file name)  <- removes file in forceful manner
 
 Directory deletion : rmdir (dir name)
                      rm -rf (dir name)  delete forefully by deleting all the inner files recursively
+
+-----------------------------END OF Files & Directory-------------------------
+
+Git Commands for creating local git, pulling from github, pushing to github.
+
+git init  <- creates a .git/ directory in the present directory
+
+git remote set-url origin ---url-here-----
+
+	The above command actually assigns the url to the origin variable (genrally used)
+
+**NOW create a github account and create a repository and add a readme file (for checking purpose)
+
+pull the files from origin from master branch to loacl repository using below command
+	git pull origin master
+
+**Now create some sample files
+
+push then into the master branch to github(server) using the below command
+	git push origin master
+
 
 

@@ -1,0 +1,24 @@
+This Document helps in Understanding the basic commands of git
+
+Listing files
+
+Show list of files -> ls
+show list of files with more detailed information -> ls -l (or) ll
+show hidden files -> ls -a
+change directory -> cd (dir name)
+
+File creation:
+
+touch (file name)  <- creates an empty file
+cat > (file name)  <- creates a file and we can add some data at the time of creation
+cat >> (file na,e) <- append some data (if no file present creates a new file)
+
+Directory creation :      mkdir (dir name)
+
+File Deletion : rm --(file name)
+                rm -fa (file name)  <- removes file in foreful manner
+
+Directory deletion : rmdir (dir name)
+                     rm -rf (dir name)  delete forefully by deleting all the inner files recursively
+
+

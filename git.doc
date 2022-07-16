@@ -38,8 +38,13 @@ pull the files from origin from master branch to loacl repository using below co
 
 **Now create some sample files
 
-push then into the master branch to github(server) using the below command
-	git push origin master
+push then into the master branch to github(server) using the below commands
+	
+	git add file_name  <- add files to the tree branch
+	git commit file_name  <- commits files to the local repository
+
+	git push origin master  <- syncronises the files
+	
 
 
 

@@ -1,0 +1,134 @@
+#creating documents
+
+POST /sem_results/_doc/1
+{
+	"name": "AAA",
+	"sem1":
+	{
+		"subjects":[true,true,true,true]
+	},
+	"sem2":
+	{
+		"subjects":[true,true,true]
+	}
+}
+
+POST /sem_results/_doc/2
+{
+	"name": "BBB",
+	"sem1":
+	{
+		"subjects":[true,false,true,true]
+	},
+	"sem2":
+	{
+		"subjects":[true,true,true,false,true,true]
+	}
+}
+
+POST /sem_results/_doc/3
+{
+	"name": "CCC",
+	"sem1":
+	{
+		"subjects":[true]
+	},
+	"sem2":
+	{
+		"subjects":[true,true,true,true,true,true]
+	}
+}
+
+POST /sem_results/_doc/4
+{
+	"name": "DDD",
+	"sem1":
+	{
+		"subjects":[false]
+	},
+	"sem2":
+	{
+		"subjects":[true,true,true,true,true,true]
+	}
+}
+
+#search all query
+
+GET /sem_results/_search
+{
+  "query":{
+    "match_all": {}
+  }
+}
+
+#search query to show who passed all semesters
+
+
+GET /sem_results/_search
+{
+  "query":
+  {
+    "bool":{
+      "must":[
+        {
+          "bool":{
+            "must_not": [
+            {
+              "match": {
+                "sem1.subjects": false
+              }
+            }
+          ]
+          }
+        },
+        {
+          "bool":{
+            "must_not": [
+            {
+              "match": {
+                "sem2.subjects": false
+              }
+            }
+          ]
+          }
+        }
+        ]
+    }
+  }
+}
+
+#query for who passed atleast one semester
+
+GET /sem_results/_search
+{
+  "query":
+  {
+    "bool":{
+      "should":[
+        {
+          "bool":{
+            "must_not": [
+            {
+              "match": {
+                "sem1.subjects": false
+              }
+            }
+          ]
+          }
+        },
+        {
+          "bool":{
+            "must_not": [
+            {
+              "match": {
+                "sem2.subjects": false
+              }
+            }
+          ]
+          }
+        }
+        ]
+    }
+  }
+}
+

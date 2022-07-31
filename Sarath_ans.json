@@ -1,0 +1,39 @@
+GET /clg_study/_search 
+{
+  "_source": {
+    "includes": [
+      "student_name"
+    ]
+  },
+  "query":{
+    "bool":{
+      "must_not":[
+        {
+          "nested": {
+            "path": "semesters",
+            "query": {
+              "bool": {
+                "must":[
+                  {
+                    "nested":{
+                      "path":"semesters.sem_result",
+                      "query":{
+                        "bool": {
+                          "must":[
+                            {
+                              "match":{"semesters.sem_result.pass":false}
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

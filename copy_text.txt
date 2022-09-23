@@ -1,5 +1,4 @@
-PUT /extra_field
-{
+index_body = {
   "mappings": {
     "properties": {
       "company_name":{"type":"text"},

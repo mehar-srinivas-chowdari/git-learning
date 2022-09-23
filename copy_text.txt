@@ -1,0 +1,27 @@
+PUT /extra_field
+{
+  "mappings": {
+    "properties": {
+      "company_name":{"type":"text"},
+      "agencies":{
+        "type": "nested",
+        "properties":{
+          "agency_name":{"type":"text"},
+          "forms": {
+            "type": "nested",
+            "properties": {
+              "form_name":{"type":"text"},
+              "ids": {
+                "type": "nested",
+                "properties":{
+                  "id":{"type":"text"},
+                  "no_error":{"type":"boolean"}
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

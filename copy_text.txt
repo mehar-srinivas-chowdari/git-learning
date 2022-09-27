@@ -71,3 +71,4 @@ threadpoolctl 3.1.0
 tomli 2.0.1
 toolz,
 ,tqdm,typer,typing,typing_extensions,typing-inspect, urllib3
+-i https://artifactory.us.caas.oneadp.com/artifactory/api/pypi/pypi/simple

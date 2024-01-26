@@ -1,1 +1,40 @@
-attrs bcrypt boto3 botocore certifi cffi charset-normalizer click cloudpickle colorama contextlib2 cryptography dask dataclasses dataclasses-json ddf dnspython docker-composer et-xmlfile fields fsspec idna iniconfig jmespath joblib kink localstack-client locket loguru marshmallow marshmallow-enum memory-profiler mocker mypy-extensions numpy openpyxl opensearch-py packaging pandas paramiko partd pip pluggy profiler psutil psycopg2 psycopg2-binary py pyarrow pycparser pydantic PyNaCl pyparsing pytest pytest-mock python-dateutil python-json-logger python-on-whales pytz PyYAML requests s3transfer schema scikit-learn scipy scp setuptools six threadpoolctl tomli toolz tqdm typer typing typing_extensions typing-inspect urllib3 -i https://artifactory.us.caas.oneadp.com/artifactory/api/pypi/pypi/simple
+import unittest
+from unittest.mock import patch
+from your_module import send_email  # Replace 'your_module' with the actual module where send_email is defined
+
+class TestSendEmail(unittest.TestCase):
+
+    @patch('your_module.SMTP')  # Replace 'your_module' with the actual module where SMTP is imported
+    def test_send_email_success(self, mock_smtp):
+        # Mocking successful email sending
+        mock_session = mock_smtp.return_value
+        mock_session.sendmail.return_value = {}
+
+        subject = "Test Subject"
+        email_data = "Test Email Data"
+        attachment_file_path = "/path/to/attachment.txt"
+
+        result = send_email(subject, email_data, attachment_file_path)
+
+        self.assertTrue(result)  # Assert that the function returns True on success
+
+        mock_smtp.assert_called_once_with('your_smtp_server', timeout=10)  # Replace 'your_smtp_server' with actual SMTP server
+        mock_session.sendmail.assert_called_once_with('MAIL_FROM', ['MAIL_TO'], mock_session.sendmail())
+
+    @patch('your_module.SMTP')
+    def test_send_email_timeout(self, mock_smtp):
+        # Mocking timeout during email sending
+        mock_smtp.side_effect = [TimeoutError, TimeoutError, TimeoutError]
+
+        subject = "Test Subject"
+        email_data = "Test Email Data"
+        attachment_file_path = "/path/to/attachment.txt"
+
+        result = send_email(subject, email_data, attachment_file_path)
+
+        self.assertFalse(result)  # Assert that the function returns False on timeout
+
+        mock_smtp.assert_called_with('your_smtp_server', timeout=10)  # Replace 'your_smtp_server' with actual SMTP server
+
+if __name__ == '__main__':
+    unittest.main()

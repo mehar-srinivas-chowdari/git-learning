@@ -1,0 +1,35 @@
+= trigger_validation(event, context):
+
+trace_id = context.aws_request_id
+
+logger.set_trace_id(trace_id)
+
+logger.info(f'Starting validation process. Trace ID: {Frace_id}')
+
+logger.info(f'Lambda event object: {event}')
+
+_request = event.get("body")
+
+if not request:
+
+logger.error("Input not passed. Please pass correct values!!")
+
+return {"statusCode": HttpStatus.BAD_REQUEST.value,
+
+"body": json.dumps({"message": "Input not passed. Please pass correct values!!"})}
+
+_request = json.loads(_request)
+
+try:
+
+logger.info(f'Lambda request body: {_request}')
+
+route_request(_request, trace_id)
+
+logger.info(f'Successfully routed request: {_request}')
+
+except ValidationException as e:
+
+logger.error(f"Validation Exception occurred while processing the request: {e}", exc_info=True)
+
+return {"statusCode": e.error_code, "body"; json.dumps({"message": str(e.args[])})}

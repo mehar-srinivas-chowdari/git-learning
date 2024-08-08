@@ -57,6 +57,39 @@ class EnumField(fields.Field):
             return value.value
         return super()._serialize(value, attr, obj, **kwargs)
 
+
+from marshmallow import fields, ValidationError
+
+class EnumListField(fields.List):
+    def __init__(self, enum: Enum, *args, **kwargs):
+        self.enum = enum
+        super().__init__(fields.Str(), *args, **kwargs)
+    
+    def _deserialize(self, value, attr, data, **kwargs):
+        if not isinstance(value, list):
+            raise ValidationError('Field must be a list.')
+        
+        # Validate each item
+        validated_items = []
+        for item in value:
+            if not isinstance(item, str):
+                raise ValidationError('All items must be strings.')
+            if item not in self.enum.__members__:
+                raise ValidationError(f'Invalid item: {item}')
+            validated_items.append(self.enum(item))
+        
+        return validated_items
+    
+    def _serialize(self, value, attr, obj, **kwargs):
+        if all(isinstance(v, self.enum) for v in value):
+            return [v.value for v in value]
+        return super()._serialize(value, attr, obj, **kwargs)
+
+
+
+
+
+
 class UserSchema(Schema):
     id = fields.Int(required=True)
     name = fields.Str(required=True)

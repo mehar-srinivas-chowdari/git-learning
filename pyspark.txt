@@ -1,17 +1,19 @@
 import pyspark.sql.functions as f
 from pyspark.sql import Window
+from pyspark import StorageLevel
 
 def balance_negative_amounts(filing_data):
     # Automatically retrieve amount columns from the DataFrame
     amount_columns = [field.name for field in filing_data.schema.fields if "amt" in field.name]
+    
+    # Repartition by Id to distribute work evenly
+    filing_data = filing_data.repartition("Id").persist(StorageLevel.MEMORY_AND_DISK)
 
     # Sort the DataFrame by Id and date
     filing_data = filing_data.orderBy("Id", "date")
     
     # Calculate the total amount for each row
-    filing_data = filing_data.withColumn("total_amt", 
-        sum(f.col(col) for col in amount_columns)
-    )
+    filing_data = filing_data.withColumn("total_amt", sum(f.col(col) for col in amount_columns))
 
     # Process rows where total_amt is negative
     for col in amount_columns:
@@ -33,9 +35,7 @@ def balance_negative_amounts(filing_data):
         )
 
         # Update the total again after adjustments
-        filing_data = filing_data.withColumn("total_amt", 
-            sum(f.col(c) for c in amount_columns)
-        )
+        filing_data = filing_data.withColumn("total_amt", sum(f.col(c) for c in amount_columns))
 
         # Set any negative amounts to zero after adjustment
         filing_data = filing_data.withColumn(
@@ -45,5 +45,8 @@ def balance_negative_amounts(filing_data):
 
     # Remove rows with negative total amounts
     filing_data = filing_data.filter(filing_data.total_amt >= 0)
+
+    # Unpersist after processing
+    filing_data.unpersist()
 
     return filing_data.select(filing_data.columns[:-1])  # Exclude the total_amt column from the final output

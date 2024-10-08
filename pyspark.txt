@@ -113,3 +113,59 @@ def adjust_negatives_up(df, amount_columns):
         df = df.filter(F.col(amt) >= 0)
 
     return df
+
+
+
+#simentanoeus adjustment 
+
+from pyspark.sql import SparkSession, Window
+import pyspark.sql.functions as F
+
+# Create a Spark session
+spark = SparkSession.builder.appName("ModifyCurrentAndLead").getOrCreate()
+
+# Sample data
+data = [
+    (1, "Day 1", 10),    # Current positive
+    (1, "Day 2", -5),    # Current negative
+    (1, "Day 3", 8),     # Current positive
+    (1, "Day 4", -10),   # Current negative
+    (1, "Day 5", 15)     # Current positive
+]
+
+# Create DataFrame
+columns = ["ID", "Date", "amt"]
+df = spark.createDataFrame(data, schema=columns)
+
+# Define window specification to access current and next rows
+window_spec = Window.partitionBy("ID").orderBy("Date")
+
+# Show initial DataFrame
+print("Initial DataFrame:")
+df.show()
+
+# Adjust both current row and lead row values simultaneously
+df_adjusted = df.withColumn(
+    "lead_amt",
+    F.lead("amt").over(window_spec)  # Get the lead amount
+).withColumn(
+    "new_amt",
+    F.when(F.col("amt") < 0, F.col("amt") + F.col("lead_amt"))  # Adjust current amount if negative
+     .otherwise(F.col("amt"))  # Keep current amount if positive
+).withColumn(
+    "lead_amt",
+    F.when(F.col("lead_amt") + F.col("amt") < 0, 0)  # Set lead to 0 if the adjustment would be negative
+     .otherwise(F.col("lead_amt"))  # Keep lead amount if not negative
+)
+
+# Select the final adjusted columns
+df_final = df_adjusted.select(
+    "ID", 
+    "Date", 
+    "new_amt", 
+    "lead_amt"
+)
+
+# Show the final adjusted DataFrame
+print("Final Adjusted DataFrame:")
+df_final.show()

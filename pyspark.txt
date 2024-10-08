@@ -1,52 +1,64 @@
-import pyspark.sql.functions as f
 from pyspark.sql import Window
-from pyspark import StorageLevel
+import pyspark.sql.functions as F
 
-def balance_negative_amounts(filing_data):
-    # Automatically retrieve amount columns from the DataFrame
-    amount_columns = [field.name for field in filing_data.schema.fields if "amt" in field.name]
+# Assuming df is your PySpark DataFrame
+# Step 1: Sum amt1, amt2, amt3, amt4
+df = df.withColumn('total_amt', F.col('amt1') + F.col('amt2') + F.col('amt3') + F.col('amt4'))
+
+# Step 2: Create window spec to order by date for each ID
+window_spec = Window.partitionBy('id').orderBy(F.col('date'))
+
+# Step 3: Define function to adjust negative amounts upwards (bottom to top)
+def adjust_negatives_up(df):
+    while True:
+        # Filter for negative total amounts
+        negative_rows = df.filter(F.col('total_amt') < 0)
+
+        if negative_rows.count() == 0:
+            break  # No more negative rows to adjust
+
+        # Shift negative amounts to the previous row (bottom to top)
+        df = df.withColumn(
+            'shifted_amt', 
+            F.lag('total_amt', 1).over(window_spec)
+        ).withColumn(
+            'total_amt', 
+            F.when(F.col('total_amt') < 0, F.col('total_amt') + F.col('shifted_amt'))
+             .otherwise(F.col('total_amt'))
+        )
     
-    # Repartition by Id to distribute work evenly
-    filing_data = filing_data.repartition("Id").persist(StorageLevel.MEMORY_AND_DISK)
+    return df.drop('shifted_amt')
 
-    # Sort the DataFrame by Id and date
-    filing_data = filing_data.orderBy("Id", "date")
+# Step 4: Define function to adjust negative amounts downwards (top to bottom)
+def adjust_negatives_down(df):
+    while True:
+        # Filter for negative total amounts
+        negative_rows = df.filter(F.col('total_amt') < 0)
+
+        if negative_rows.count() == 0:
+            break  # No more negative rows to adjust
+
+        # Shift negative amounts to the next row (top to bottom)
+        df = df.withColumn(
+            'shifted_amt', 
+            F.lead('total_amt', 1).over(window_spec)
+        ).withColumn(
+            'total_amt', 
+            F.when(F.col('total_amt') < 0, F.col('total_amt') + F.col('shifted_amt'))
+             .otherwise(F.col('total_amt'))
+        )
     
-    # Calculate the total amount for each row
-    filing_data = filing_data.withColumn("total_amt", sum(f.col(col) for col in amount_columns))
+    return df.drop('shifted_amt')
 
-    # Process rows where total_amt is negative
-    for col in amount_columns:
-        # Calculate the total negative adjustment needed
-        filing_data = filing_data.withColumn("adjustment_needed", 
-            f.when(f.col("total_amt") < 0, f.col("total_amt")).otherwise(0)
-        )
+# Step 5: Apply the top-to-bottom and bottom-to-top adjustments
+df = adjust_negatives_up(df)
+df = adjust_negatives_down(df)
 
-        # Calculate the adjustment ratio based on the total
-        filing_data = filing_data.withColumn("ratio", 
-            f.when(filing_data.total_amt < 0, f.col(col) / -f.col("total_amt")).otherwise(0)
-        )
+# Step 6: If any total_amt is still negative, make it zero
+df = df.withColumn('total_amt', F.when(F.col('total_amt') < 0, 0).otherwise(F.col('total_amt')))
 
-        # Apply the adjustments to each amount column
-        filing_data = filing_data.withColumn(col, 
-            f.when(f.col("adjustment_needed") < 0, 
-                   f.col(col) + (f.col("adjustment_needed") * f.col("ratio")))
-            .otherwise(f.col(col))
-        )
+# Step 7: Remove rows where total_amt is zero
+df = df.filter(F.col('total_amt') != 0)
 
-        # Update the total again after adjustments
-        filing_data = filing_data.withColumn("total_amt", sum(f.col(c) for c in amount_columns))
-
-        # Set any negative amounts to zero after adjustment
-        filing_data = filing_data.withColumn(
-            col,
-            f.when(f.col(col) < 0, 0).otherwise(f.col(col))
-        )
-
-    # Remove rows with negative total amounts
-    filing_data = filing_data.filter(filing_data.total_amt >= 0)
-
-    # Unpersist after processing
-    filing_data.unpersist()
-
-    return filing_data.select(filing_data.columns[:-1])  # Exclude the total_amt column from the final output
+# Step 8: Show final DataFrame
+df.show()

@@ -1,64 +1,72 @@
 from pyspark.sql import Window
 import pyspark.sql.functions as F
 
-# Assuming df is your PySpark DataFrame
-# Step 1: Sum amt1, amt2, amt3, amt4
-df = df.withColumn('total_amt', F.col('amt1') + F.col('amt2') + F.col('amt3') + F.col('amt4'))
+# Step 1: Dynamically identify the amount columns (assuming non-ID, non-date columns are amounts)
+amount_columns = [col for col in df.columns if col not in ['id', 'date']]
 
-# Step 2: Create window spec to order by date for each ID
-window_spec = Window.partitionBy('id').orderBy(F.col('date'))
+# Step 2: Define the window specification to partition by ID and order by date
+window_spec = Window.partitionBy('id').orderBy('date')
 
-# Step 3: Define function to adjust negative amounts upwards (bottom to top)
-def adjust_negatives_up(df):
+# Step 3: Sum all the amount columns dynamically to create total_amt
+df = df.withColumn('total_amt', sum([F.col(col) for col in amount_columns]))
+
+# Step 4: Function to adjust the negative amounts from bottom to top (roll up)
+def adjust_negatives_up(df, amount_columns):
     while True:
-        # Filter for negative total amounts
+        # Identify rows where total amount is negative
         negative_rows = df.filter(F.col('total_amt') < 0)
-
+        
+        # If no negative rows remain, stop the loop
         if negative_rows.count() == 0:
-            break  # No more negative rows to adjust
+            break
+        
+        # Shift the amounts of previous row upwards using lag function for each amount column dynamically
+        for amt in amount_columns:
+            df = df.withColumn(f'prev_{amt}', F.lag(amt, 1).over(window_spec))
+            
+        # Adjust negative amounts dynamically
+        for amt in amount_columns:
+            df = df.withColumn(amt, F.when(F.col('total_amt') < 0, F.col(amt) + F.col(f'prev_{amt}')).otherwise(F.col(amt)))
+        
+        # Recalculate total_amt after adjustment
+        df = df.withColumn('total_amt', sum([F.col(col) for col in amount_columns]))
 
-        # Shift negative amounts to the previous row (bottom to top)
-        df = df.withColumn(
-            'shifted_amt', 
-            F.lag('total_amt', 1).over(window_spec)
-        ).withColumn(
-            'total_amt', 
-            F.when(F.col('total_amt') < 0, F.col('total_amt') + F.col('shifted_amt'))
-             .otherwise(F.col('total_amt'))
-        )
-    
-    return df.drop('shifted_amt')
+    # Remove columns used for shifting values
+    return df.drop(*[f'prev_{amt}' for amt in amount_columns])
 
-# Step 4: Define function to adjust negative amounts downwards (top to bottom)
-def adjust_negatives_down(df):
+# Step 5: Function to adjust negative amounts from top to bottom (roll down)
+def adjust_negatives_down(df, amount_columns):
     while True:
-        # Filter for negative total amounts
+        # Identify rows where total amount is negative
         negative_rows = df.filter(F.col('total_amt') < 0)
-
+        
+        # If no negative rows remain, stop the loop
         if negative_rows.count() == 0:
-            break  # No more negative rows to adjust
+            break
+        
+        # Shift the amounts of next row downwards using lead function for each amount column dynamically
+        for amt in amount_columns:
+            df = df.withColumn(f'next_{amt}', F.lead(amt, 1).over(window_spec))
+            
+        # Adjust negative amounts dynamically
+        for amt in amount_columns:
+            df = df.withColumn(amt, F.when(F.col('total_amt') < 0, F.col(amt) + F.col(f'next_{amt}')).otherwise(F.col(amt)))
+        
+        # Recalculate total_amt after adjustment
+        df = df.withColumn('total_amt', sum([F.col(col) for col in amount_columns]))
 
-        # Shift negative amounts to the next row (top to bottom)
-        df = df.withColumn(
-            'shifted_amt', 
-            F.lead('total_amt', 1).over(window_spec)
-        ).withColumn(
-            'total_amt', 
-            F.when(F.col('total_amt') < 0, F.col('total_amt') + F.col('shifted_amt'))
-             .otherwise(F.col('total_amt'))
-        )
-    
-    return df.drop('shifted_amt')
+    # Remove columns used for shifting values
+    return df.drop(*[f'next_{amt}' for amt in amount_columns])
 
-# Step 5: Apply the top-to-bottom and bottom-to-top adjustments
-df = adjust_negatives_up(df)
-df = adjust_negatives_down(df)
+# Step 6: Apply the bottom-to-top adjustment, followed by the top-to-bottom adjustment
+df = adjust_negatives_up(df, amount_columns)
+df = adjust_negatives_down(df, amount_columns)
 
-# Step 6: If any total_amt is still negative, make it zero
+# Step 7: After rolling up and down, set any remaining negative total to zero
 df = df.withColumn('total_amt', F.when(F.col('total_amt') < 0, 0).otherwise(F.col('total_amt')))
 
-# Step 7: Remove rows where total_amt is zero
+# Step 8: Remove rows where total_amt is zero after adjustment
 df = df.filter(F.col('total_amt') != 0)
 
-# Step 8: Show final DataFrame
+# Step 9: Show the final dataframe
 df.show()

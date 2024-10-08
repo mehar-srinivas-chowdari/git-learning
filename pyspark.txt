@@ -70,3 +70,46 @@ df = df.filter(F.col('total_amt') != 0)
 
 # Step 9: Show the final dataframe
 df.show()
+
+
+
+
+#adjustment func
+
+
+from pyspark.sql import Window
+import pyspark.sql.functions as F
+
+def adjust_negatives_up(df, amount_columns):
+    window_spec = Window.partitionBy('id').orderBy('date')
+    
+    while True:
+        # Identify rows where total amount is negative
+        negative_rows = df.filter(F.col('total_amt') < 0)
+        
+        # If no negative rows remain, stop the loop
+        if negative_rows.count() == 0:
+            break
+        
+        # Adjust negative amounts dynamically
+        for amt in amount_columns:
+            # Add negative amounts to the previous row's amount
+            df = df.withColumn(
+                amt,
+                F.when(F.col('total_amt') < 0, F.col(amt) + F.lag(amt, 1).over(window_spec)).otherwise(F.col(amt))
+            )
+
+        # Remove rows where total_amt is negative
+        df = df.filter(F.col('total_amt') >= 0)
+
+        # Recalculate total_amt after adjustment
+        df = df.withColumn('total_amt', sum([F.col(col) for col in amount_columns]))
+
+    # Final adjustment to ensure no negative total_amt and remove any negative rows
+    df = df.filter(F.col('total_amt') >= 0)
+
+    # Drop any rows with negative amounts, since those are now invalid
+    for amt in amount_columns:
+        df = df.filter(F.col(amt) >= 0)
+
+    return df

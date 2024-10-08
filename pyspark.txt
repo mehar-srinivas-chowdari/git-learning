@@ -2,19 +2,19 @@ import pyspark.sql.functions as f
 from pyspark.sql import Window
 
 def balance_negative_amounts(filing_data):
-    # Define a list of columns to adjust
-    amount_columns = ['amt1', 'amt2', 'amt3', 'amt4']
-    
+    # Automatically retrieve amount columns from the DataFrame
+    amount_columns = [field.name for field in filing_data.schema.fields if "amt" in field.name]
+
     # Sort the DataFrame by Id and date
     filing_data = filing_data.orderBy("Id", "date")
     
     # Calculate the total amount for each row
     filing_data = filing_data.withColumn("total_amt", 
-        filing_data.amt1 + filing_data.amt2 + filing_data.amt3 + filing_data.amt4
+        sum(f.col(col) for col in amount_columns)
     )
 
     # Process rows where total_amt is negative
-    for index, col in enumerate(amount_columns):
+    for col in amount_columns:
         # Calculate the total negative adjustment needed
         filing_data = filing_data.withColumn("adjustment_needed", 
             f.when(f.col("total_amt") < 0, f.col("total_amt")).otherwise(0)
@@ -34,7 +34,7 @@ def balance_negative_amounts(filing_data):
 
         # Update the total again after adjustments
         filing_data = filing_data.withColumn("total_amt", 
-            filing_data.amt1 + filing_data.amt2 + filing_data.amt3 + filing_data.amt4
+            sum(f.col(c) for c in amount_columns)
         )
 
         # Set any negative amounts to zero after adjustment

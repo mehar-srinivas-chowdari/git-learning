@@ -1,0 +1,55 @@
+import pyspark.sql.functions as f
+from pyspark.sql import Window
+
+def balance_negative_amounts(filing_data):
+    # Define a list of columns to adjust (amt1, amt2, amt3, amt4)
+    amount_columns = ['amt1', 'amt2', 'amt3', 'amt4']
+
+    # Sort the DataFrame by Id and date
+    filing_data = filing_data.orderBy("Id", "date")
+
+    # Process from bottom to top
+    for col in amount_columns:
+        # Create a window specification for current id ordered by date
+        window_spec = Window.partitionBy("Id").orderBy("date")
+
+        # Iterate through each row in reverse order
+        filing_data = filing_data.withColumn(
+            col,
+            f.when(f.col(col) < 0, f.lag(col).over(window_spec) + f.col(col))  # Adjust using the previous row's amount
+            .otherwise(f.col(col))  # Keep original value if it's not negative
+        )
+
+        # Set negative values to zero after adjustment
+        filing_data = filing_data.withColumn(
+            col,
+            f.when(f.col(col) < 0, 0).otherwise(f.col(col))
+        )
+
+    # Remove rows with negative amounts
+    filing_data = filing_data.filter((filing_data.amt1 >= 0) & (filing_data.amt2 >= 0) & 
+                                      (filing_data.amt3 >= 0) & (filing_data.amt4 >= 0))
+
+    # Process from top to bottom
+    for col in amount_columns:
+        # Create a window specification for current id ordered by date
+        window_spec = Window.partitionBy("Id").orderBy(f.col("date").desc())
+
+        # Iterate through each row in normal order
+        filing_data = filing_data.withColumn(
+            col,
+            f.when(f.col(col) < 0, f.lag(col).over(window_spec) + f.col(col))  # Adjust using the next row's amount
+            .otherwise(f.col(col))  # Keep original value if it's not negative
+        )
+
+        # Set negative values to zero after adjustment
+        filing_data = filing_data.withColumn(
+            col,
+            f.when(f.col(col) < 0, 0).otherwise(f.col(col))
+        )
+
+    # Remove rows with negative amounts again
+    filing_data = filing_data.filter((filing_data.amt1 >= 0) & (filing_data.amt2 >= 0) & 
+                                      (filing_data.amt3 >= 0) & (filing_data.amt4 >= 0))
+
+    return filing_data

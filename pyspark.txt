@@ -169,3 +169,29 @@ df_final = df_adjusted.select(
 # Show the final adjusted DataFrame
 print("Final Adjusted DataFrame:")
 df_final.show()
+
+
+
+#without create cols
+
+
+from pyspark.sql import functions as F
+
+for ant in amount_columns:
+    df = df.withColumn(
+        ant,
+        F.when(
+            F.lead("total_ent", offset=1).over(window_spec) < 8,
+            F.round(
+                F.when(
+                    F.lead("total_ent", offset=1).over(window_spec) < 0,
+                    F.lead(ant, offset=1).over(window_spec)
+                ).otherwise(F.col(ant)), scale=2
+            )
+        ).otherwise(
+            F.when(
+                F.lag(ant, offset=1).over(window_spec).isNotNull(),
+                F.lag(ant, offset=1).over(window_spec)
+            ).otherwise(F.col(ant))
+        )
+    )

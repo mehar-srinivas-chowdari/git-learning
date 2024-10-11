@@ -195,3 +195,37 @@ for ant in amount_columns:
             ).otherwise(F.col(ant))
         )
     )
+
+
+#simenteneous cols update using struct 
+
+from pyspark.sql import functions as F
+from pyspark.sql.window import Window
+
+# Define window spec and conditions
+window_spec = Window.partitionBy('id').orderBy('date')
+lag_col3 = F.lag('col3', 1).over(window_spec)
+
+# Example conditions (You can modify them as per your logic)
+cond1 = F.col('col3') > lag_col3
+cond2 = F.col('col2') > 50
+cond3 = F.col('col1') < 100
+
+# Update col1 based on cond1 and cond2, else use another logic for col1
+# Update col2 based on cond1 and cond3, else use another logic for col2
+df_updated = df.withColumn(
+    "combined",
+    F.when(cond1 & cond2, F.struct((F.col('col1') * 2).alias('col1_updated'),
+                                   F.col('col2').alias('col2_updated'))) # Logic for col1 when cond1 and cond2 are true
+    .when(cond1 & cond3, F.struct(F.col('col1').alias('col1_updated'),
+                                  (F.col('col2') + 20).alias('col2_updated'))) # Logic for col2 when cond1 and cond3 are true
+    .otherwise(F.struct((F.col('col1') * 1.5).alias('col1_updated'),  # Default logic for col1
+                        (F.col('col2') + 5).alias('col2_updated')))  # Default logic for col2
+)
+
+# Now extract col1 and col2 back from the 'combined' column
+df_final = df_updated.withColumn('col1', F.col('combined.col1_updated')) \
+                     .withColumn('col2', F.col('combined.col2_updated')) \
+                     .drop('combined')
+
+df_final.show()

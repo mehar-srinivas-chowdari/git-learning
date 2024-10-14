@@ -229,3 +229,85 @@ df_final = df_updated.withColumn('col1', F.col('combined.col1_updated')) \
                      .drop('combined')
 
 df_final.show()
+
+
+#--------------------------------#
+#df while approach without temp_df
+
+
+
+from pyspark.sql import functions as F
+from pyspark.sql.window import Window
+
+# Define the window specification
+window_spec_desc = Window.partitionBy('federalId').orderBy(F.desc('A07_LIAB_DATE'))
+
+# While there are rows where LIAB_TOTAL is less than 0.00, continue processing
+while df.filter(F.col("LIAB_TOTAL") < 0.00).count() != 0:
+    # Print the count of rows where LIAB_TOTAL is less than 0.00
+    print(df.filter(F.col("LIAB_TOTAL") < 0.00).count())
+    
+    # Calculate lagged values and row numbers for current iteration
+    lag = F.lag(F.col("LIAB_TOTAL"), offset=1).over(window_spec_desc)
+    row_number = F.row_number().over(window_spec_desc)
+    
+    # Get the maximum row number in the current partition
+    max_row_number = df.select(F.max(row_number)).first()[0]
+
+    # Check if there are any negative values in the last position of each partition
+    last_neg_condition = df.filter((F.col("LIAB_TOTAL") < 0.00) & (row_number == max_row_number)).count() > 0
+    
+    # Define conditions
+    cond1 = (lag.isNotNull() & (lag < 0.00))
+    cond2 = (F.col("LIAB_TOTAL") < 0.00)
+
+    # Update the 'LIAB_TOTAL' column based on conditions
+    df = df.withColumn("LIAB_TOTAL", 
+        F.when(last_neg_condition, F.col("LIAB_TOTAL"))  # If last value is negative, keep it as is
+        .otherwise(F.when(cond1, F.round(lag + F.col("LIAB_TOTAL"), 2))  # If cond1 is true, sum lag and now
+        .otherwise(F.when(cond2, F.lit(0.00))  # If cond2 is true, set to 0.00
+        .otherwise(F.col("LIAB_TOTAL")))
+    )
+
+# If necessary, show the final DataFrame
+df.show()
+
+#---------------------------#
+#with temp_df
+
+from pyspark.sql import functions as F
+from pyspark.sql.window import Window
+
+# Define the window specification
+window_spec_desc = Window.partitionBy('federalId').orderBy(F.desc('A07_LIAB_DATE'))
+
+# Calculate lagged values, current values, and row numbers in a separate DataFrame
+temp_df = df.withColumn("lag", F.lag(F.col("LIAB_TOTAL"), offset=1).over(window_spec_desc)) \
+             .withColumn("row_number", F.row_number().over(window_spec_desc))
+
+# While there are rows where LIAB_TOTAL is less than 0.00, continue processing
+while temp_df.filter(F.col("LIAB_TOTAL") < 0.00).count() != 0:
+    # Print the count of rows where LIAB_TOTAL is less than 0.00
+    print(temp_df.filter(F.col("LIAB_TOTAL") < 0.00).count())
+    
+    # Determine the maximum row number in the current partition
+    max_row_number = temp_df.agg(F.max("row_number")).first()[0]
+    
+    # Check if there are any negative values in the last position of each partition
+    last_neg_condition = temp_df.filter((F.col("LIAB_TOTAL") < 0.00) & (F.col("row_number") == max_row_number)).count() > 0
+    
+    # Define conditions
+    cond1 = (F.col("lag").isNotNull() & (F.col("lag") < 0.00))
+    cond2 = (F.col("LIAB_TOTAL") < 0.00)
+
+    # Update the 'LIAB_TOTAL' column based on conditions
+    df = df.withColumn("LIAB_TOTAL", 
+        F.when(last_neg_condition, F.col("LIAB_TOTAL"))  # If last value is negative, keep it as is
+        .otherwise(F.when(cond1, F.round(F.col("lag") + F.col("LIAB_TOTAL"), 2))  # If cond1 is true, sum lag and now
+        .otherwise(F.when(cond2, F.lit(0.00))  # If cond2 is true, set to 0.00
+        .otherwise(F.col("LIAB_TOTAL")))
+    )
+    
+    # Recalculate the temporary DataFrame
+    temp_df = df.withColumn("lag", F.lag(F.col("LIAB_TOTAL"), offset=1).over(window_spec_desc)) \
+                 .withColumn("row_number", F.row_number().over(window_spec_desc))

@@ -161,3 +161,25 @@ try:
     print(user)
 except ValidationException as e:
     print(f"Validation error: {e}")
+
+
+
+#Andrews question 
+
+Here's a revised version of your paragraph with corrections for clarity, grammar, and flow:
+
+
+---
+
+Hi Andrew,
+
+We have a use case for rolling up negative amounts. The goal is to roll up (add) the negative amounts to the previous positive amounts on earlier dates, until the negative amounts are fully absorbed.
+
+We have written an approach that iterates over the dataframe until the negative amounts are absorbed. However, we don't see this as an efficient solution, and we're struggling to find a better approach. Could you please share your insights on the approach outlined below?
+
+
+---
+
+Let me know if you'd like any further adjustments!
+
+

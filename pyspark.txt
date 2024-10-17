@@ -316,33 +316,32 @@ while temp_df.filter(F.col("LIAB_TOTAL") < 0.00).count() != 0:
 #force balancing 
 
 from pyspark.sql import functions as F
-from pyspark.sql.window import Window
 
-# Assuming df is the DataFrame you're working with
+# Assuming df is your DataFrame with columns: Id, Date, Amount, IdTotal
+given_date = 240430
 
-# Step 1: Calculate the difference between Amount and IdTotal
-df = df.withColumn("diff", F.col("IdTotal") - F.col("Amount"))
+# Step 1: Calculate the sum of Amount for each Id
+df_sum = df.groupBy("Id").agg(F.sum("Amount").alias("total_amount"))
 
-# Step 2: Filter where there's a mismatch
-mismatched_df = df.filter(F.col("diff") != 0)
+# Step 2: Join with the original DataFrame to get IdTotal and calculate the difference
+df_with_diff = df_sum.join(df, on="Id").withColumn("diff", F.col("IdTotal") - F.col("total_amount"))
 
-# Step 3: Check if the given date (240430) is present for the same Id
-windowSpec = Window.partitionBy("Id").orderBy("Date")
+# Step 3: Filter rows where there's a difference
+mismatched_df = df_with_diff.filter(F.col("diff") != 0)
 
-# Get the row corresponding to the given date
-date_exists = mismatched_df.filter(F.col("Date") == 240430)
+# Step 4: Handle the cases where the given date exists or doesn't exist for each Id
+# If the given date exists, adjust the amount on that date
+adjusted_df = mismatched_df.filter(F.col("Date") == given_date).withColumn("Amount", F.col("Amount") + F.col("diff"))
 
-# If the date exists, update the Amount by adding the difference
-updated_date_exists = date_exists.withColumn("Amount", F.col("Amount") + F.col("diff"))
+# If the date does not exist, create a new row for that Id and the given date
+new_rows_df = mismatched_df.filter(F.col("Date") != given_date) \
+    .select("Id", F.lit(given_date).alias("Date"), F.col("diff").alias("Amount"), "IdTotal")
 
-# If the date does not exist, create a new row with the given date and set Amount to the diff value
-new_row_df = mismatched_df.filter(~(F.col("Date") == 240430)) \
-    .withColumn("new_date", F.lit(240430)) \
-    .withColumn("Amount", F.col("diff")) \
-    .select("Id", "new_date", "Amount", "IdTotal")
+# Combine the adjusted rows with the new rows
+result_df = adjusted_df.unionByName(new_rows_df)
 
-# Union the two DataFrames to get the final output
-final_df = updated_date_exists.union(new_row_df).select("Id", "Date", "Amount", "IdTotal")
+# Step 5: Select necessary columns for final output
+final_df = result_df.select("Id", "Date", "Amount", "IdTotal")
 
 # Display the final DataFrame
 final_df.show()

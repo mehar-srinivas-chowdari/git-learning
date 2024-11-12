@@ -101,3 +101,66 @@ Airflow or other orchestration tools can manage and monitor the jobs, providing 
 
 Each of these approaches has benefits depending on your specific requirements, especially in terms of scaling, monitoring, and resource utilization. Let me know if you'd like code examples for any specific approach!
 
+
+
+
+
+
+
+from pyspark.sql import SparkSession
+import logging
+
+# Initialize Spark session
+spark = SparkSession.builder.appName("ParallelKafkaProcessing").getOrCreate()
+
+# Kafka configuration
+kafka_brokers = "your_kafka_brokers"  # e.g., "host1:9092"
+topic_name = "your_topic_name"
+
+# Step 1: Define Kafka Stream Source
+kafka_stream = (
+    spark.readStream
+    .format("kafka")
+    .option("kafka.bootstrap.servers", kafka_brokers)
+    .option("subscribe", topic_name)
+    .option("startingOffsets", "latest")
+    .option("maxOffsetsPerTrigger", "4")  # Control batch size if necessary
+    .load()
+)
+
+# Processing logic per Kafka message
+def process_message(row):
+    key, value = row["key"], row["value"]
+
+    # Step 1: Retrieve initial data from DB
+    db_data = spark.read.format("jdbc").options(
+        url="jdbc:your_db_url",
+        dbtable="your_table",
+        user="your_user",
+        password="your_password"
+    ).load()
+
+    # Join the DB data with the Kafka message data
+    enriched_df = db_data.filter(db_data["key_column"] == key)
+
+    # Step 2 and 3: Perform additional joins with other data sources
+    more_data = spark.read.parquet("path_to_more_data")
+    enriched_df = enriched_df.join(more_data, enriched_df["join_key"] == more_data["join_key"])
+
+    # Step 4: Apply transformations
+    transformed_df = enriched_df.withColumn("new_col", enriched_df["existing_col"] * 2)
+
+    # Step 5: Write output to Parquet
+    transformed_df.write.mode("append").parquet("/path/to/output/location")
+
+# Use `foreach` to apply `process_message` to each message independently
+query = (
+    kafka_stream
+    .writeStream
+    .foreach(process_message)
+    .outputMode("append")
+    .option("checkpointLocation", "/path/to/checkpoint")
+    .start()
+)
+
+query.awaitTermination()

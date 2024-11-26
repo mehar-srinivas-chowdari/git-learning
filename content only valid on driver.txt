@@ -1,0 +1,205 @@
+In Spark, certain operations are driver-only and will not work on executors. These operations typically involve SparkContext or SparkSession, which are tied to the driver. When these operations are used in transformations or actions executed on executors (such as in foreach, map, foreachPartition, etc.), you will encounter errors like "Context only valid in driver".
+
+Here’s a list of operations that won't work on executors and should only be executed on the driver:
+
+
+---
+
+1. Spark Session and Context Operations
+
+Creating a Spark Session (SparkSession):
+
+spark = SparkSession.builder.appName("MyApp").getOrCreate()
+
+Reason: The SparkSession is a driver-side object and is needed to access the Spark cluster. It cannot be instantiated or used within an executor.
+
+
+Accessing Spark Context (sc):
+
+spark.sparkContext
+
+Reason: The SparkContext (sc) is a driver-side object that manages the communication with the cluster. You can access it on the driver but not inside executors.
+
+
+
+2. Reading Data (Driver-Side Only)
+
+spark.read.jdbc (for reading data from databases via JDBC):
+
+df = spark.read.jdbc(url=jdbc_url, table="your_table", properties=properties)
+
+Reason: Database connections and data fetching using jdbc should be initiated from the driver. The operation involves network I/O and connection handling that should not be distributed to the executors.
+
+
+spark.read.text, spark.read.csv, spark.read.parquet, etc. (File reading):
+
+These can be used to read data files, but in some cases (especially with large datasets), the read operation might be initiated on the driver. However, the actual distributed processing happens across the executors after the DataFrame is created.
+
+
+
+3. Creating RDDs and DataFrames (Driver-Side)
+
+Creating DataFrames using spark.createDataFrame():
+
+df = spark.createDataFrame(data)
+
+Reason: Creating a DataFrame requires a SparkSession, which can only be done on the driver. Executors cannot create a new DataFrame on their own.
+
+
+Creating RDDs using sc.parallelize():
+
+rdd = sc.parallelize(data)
+
+Reason: The sc.parallelize() method can be used to create RDDs, but it should be done on the driver, not inside transformations or actions executed by the executors.
+
+
+
+4. Actions and Operations that Involve Data Collection
+
+collect():
+
+df.collect()
+
+Reason: This action collects data back to the driver, which could overwhelm the driver’s memory if the dataset is too large. It should not be used inside executors, as it's a driver-only operation.
+
+
+count():
+
+df.count()
+
+Reason: This is an action that counts the total number of records. While it's often run on executors, it is an action that collects the result back to the driver.
+
+
+show():
+
+df.show()
+
+Reason: Similar to collect(), it runs on the driver to display a sample of the data. It should not be used inside an executor function like foreach.
+
+
+take(n):
+
+df.take(n)
+
+Reason: Similar to collect(), this action collects the first n rows back to the driver.
+
+
+
+5. Writing Data (Driver-Side)
+
+Writing Data to External Systems (S3, HDFS, JDBC, etc.):
+
+df.write.format("parquet").mode("overwrite").save(path)
+
+Reason: Writing data (especially to file systems like HDFS or S3) should be done on the driver since the write operation initiates the file connection and task coordination, which is not distributed across executors.
+
+
+
+6. Broadcast Variables (Initialization on Driver)
+
+Broadcast Variables:
+
+broadcast_var = sc.broadcast(data)
+
+Reason: While the broadcast variable is available on executors, its creation and initialization must happen on the driver side. It cannot be created inside a transformation or action executed by an executor.
+
+
+
+
+---
+
+7. Spark Configuration (Driver-Side)
+
+Setting Configurations:
+
+spark.conf.set("spark.some.config", "value")
+
+Reason: Setting or getting Spark configurations should be done on the driver. These configurations apply globally across the Spark session, and it's not possible to change them dynamically within executors.
+
+
+
+
+---
+
+8. Custom Functions Using SparkContext or SparkSession
+
+Custom functions that require spark or sc:
+
+Any custom function (like process_message) that needs access to SparkSession (spark) or SparkContext (sc) will fail if invoked inside an executor function.
+
+
+For example:
+
+def process_message(row):
+    # Trying to access spark inside an executor will fail
+    df = spark.read.jdbc(...)
+
+This code should be avoided, as Spark context-related operations must occur on the driver.
+
+
+
+---
+
+9. Certain UDF Operations (Spark-Specific)
+
+UDF Registration (on driver only):
+
+Registering User Defined Functions (UDFs) should be done on the driver.
+
+spark.udf.register("my_udf", my_udf)
+
+Reason: UDF registration relies on the driver-side logic to inject the function into Spark's execution plan.
+
+
+
+
+---
+
+General Rule of Thumb
+
+Anything that interacts with the SparkSession (spark), SparkContext (sc), or global resources like connections to databases, file systems, or configurations, should only be done on the driver.
+
+All distributed operations (like map, reduce, filtering) should happen on the executors, and you can only pass data to the executors to be processed in parallel.
+
+
+
+---
+
+Summary of Operations that Don't Work on Executors:
+
+1. SparkSession operations (e.g., spark.read, spark.createDataFrame).
+
+
+2. SparkContext operations (e.g., sc.parallelize, sc.broadcast).
+
+
+3. JDBC reading (spark.read.jdbc).
+
+
+4. File reading operations (spark.read.parquet, spark.read.csv, etc.) that require SparkSession.
+
+
+5. Actions that collect data back to the driver (e.g., collect(), count(), show()).
+
+
+6. Writing data to external sources (e.g., df.write.format(...).save(...)).
+
+
+7. Custom functions that require access to spark or sc.
+
+
+8. UDF registration.
+
+
+
+What Works on Executors:
+
+Distributed transformations (map, filter, flatMap, foreach, etc.).
+
+Using broadcast variables that are initialized on the driver but accessible on the executors.
+
+Operations on RDDs or DataFrames that involve processing the data, such as map or reduce.
+
+
+By adhering to these rules, you can ensure your Spark application runs efficiently and avoids errors related to context misuse.
+

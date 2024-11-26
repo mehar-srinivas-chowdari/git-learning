@@ -164,3 +164,76 @@ query = (
 )
 
 query.awaitTermination()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+from pyspark.sql import SparkSession
+
+# Initialize SparkSession
+spark = SparkSession.builder \
+    .appName("KafkaStreamProcessing") \
+    .getOrCreate()
+
+# Kafka Stream
+kafka_stream = spark.readStream \
+    .format("kafka") \
+    .option("kafka.bootstrap.servers", "localhost:9092") \
+    .option("subscribe", "your_kafka_topic") \
+    .load()
+
+# Extract message content
+message_df = kafka_stream.selectExpr("CAST(value AS STRING) as message")
+
+def process_message(trigger_value):
+    """
+    Function to process the data triggered by a Kafka message.
+    """
+    try:
+        df = spark.read.format("jdbc") \
+            .option("url", "jdbc:mysql://your-database-url") \
+            .option("query", f"SELECT * FROM your_table WHERE key = '{trigger_value}'") \
+            .load()
+
+        transformed_df = df.withColumn("new_column", df["existing_column"] * 2)
+
+        output_path = f"s3://your-bucket/{trigger_value}/"
+        transformed_df.write.format("parquet").mode("overwrite").save(output_path)
+
+        print(f"Processed and saved data for trigger: {trigger_value}")
+    except Exception as e:
+        print(f"Error processing trigger {trigger_value}: {e}")
+
+def process_partition(partition):
+    """
+    Function to process each partition of messages in parallel.
+    """
+    import json
+    for row in partition:
+        message = row['message']
+        trigger_value = json.loads(message).get("trigger_key", "default_value")
+        process_message(trigger_value)
+
+def process_batch(batch_df, epoch_id):
+    """
+    Function to process each micro-batch of Kafka messages.
+    """
+    batch_df.rdd.foreachPartition(process_partition)
+
+# Start streaming query
+query = message_df.writeStream \
+    .foreachBatch(process_batch) \
+    .outputMode("update") \
+    .start()
+
+query.awaitTermination()
